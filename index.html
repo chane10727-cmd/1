@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG 猜拳大冒險 - Rock Paper Scissors RPG</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        rpg: {
+                            dark: '#0f172a',
+                            card: '#1e293b',
+                            accent: '#f59e0b',
+                            hp: '#ef4444',
+                            mp: '#3b82f6',
+                        }
+                    },
+                    fontFamily: {
+                        pixel: ['"Press Start 2P"', 'monospace', 'sans-serif'],
+                        main: ['"Noto Sans TC"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #090d16;
+            background-image: 
+                radial-gradient(circle at 50% 20%, rgba(120, 53, 15, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(30, 58, 138, 0.2) 0%, transparent 40%);
+            min-height: 100vh;
+            color: #f8fafc;
+            user-select: none;
+        }
+
+        /* Pixel art font header */
+        .font-pixel {
+            font-family: 'Press Start 2P', monospace;
+        }
+
+        /* Custom Scrollbar for Battle Log */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Screen Shake Effect */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-8px, 5px) rotate(-1deg); }
+            40% { transform: translate(8px, -5px) rotate(1deg); }
+            60% { transform: translate(-5px, -3px) rotate(-0.5deg); }
+            80% { transform: translate(5px, 3px) rotate(0.5deg); }
+        }
+        .shake-animation {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        /* Floating Damage Text Animation */
+        @keyframes floatDamage {
+            0% {
+                opacity: 0;
+                transform: translateY(10px) scale(0.8);
+            }
+            20% {
+                opacity: 1;
+                transform: translateY(-10px) scale(1.3);
+            }
+            80% {
+                opacity: 1;
+                transform: translateY(-40px) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-60px) scale(0.8);
+            }
+        }
+        .damage-float {
+            position: absolute;
+            animation: floatDamage 1.2s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+            pointer-events: none;
+            z-index: 50;
+            font-weight: 900;
+            text-shadow: 0 0 8px rgba(0,0,0,0.9), 2px 2px 0px #000;
+        }
+
+        /* Glowing Pulse for Action Buttons */
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); }
+            50% { box-shadow: 0 0 25px rgba(245, 158, 11, 0.6); }
+        }
+        .glow-btn {
+            animation: pulseGlow 2s infinite;
+        }
+
+        /* Hand clash animations */
+        @keyframes clashPlayer {
+            0% { transform: translateX(-100px) scale(0.5) rotate(-20deg); opacity: 0; }
+            50% { transform: translateX(20px) scale(1.2) rotate(10deg); opacity: 1; }
+            100% { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
+        }
+        @keyframes clashEnemy {
+            0% { transform: translateX(100px) scale(0.5) rotate(20deg); opacity: 0; }
+            50% { transform: translateX(-20px) scale(1.2) rotate(-10deg); opacity: 1; }
+            100% { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
+        }
+        .animate-player-card {
+            animation: clashPlayer 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        .animate-enemy-card {
+            animation: clashEnemy 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen items-center justify-between p-3 md:p-6 overflow-x-hidden">
+
+    <!-- Audio FX Engine (Web Audio API Synthesizer) -->
+    <script>
+        const SoundFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playTone(freq, type, duration, startVol = 0.1, endVol = 0) {
+                if (!this.ctx || soundMuted) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(startVol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(Math.max(endVol, 0.0001), this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e){}
+            },
+            click() {
+                this.init();
+                this.playTone(400, 'sine', 0.08, 0.1);
+            },
+            attack() {
+                this.init();
+                this.playTone(150, 'sawtooth', 0.15, 0.2);
+                setTimeout(() => this.playTone(300, 'square', 0.1, 0.15), 50);
+            },
+            hit() {
+                this.init();
+                this.playTone(100, 'square', 0.2, 0.3);
+                this.playTone(60, 'sawtooth', 0.25, 0.3);
+            },
+            tie() {
+                this.init();
+                this.playTone(250, 'triangle', 0.15, 0.15);
+                setTimeout(() => this.playTone(250, 'triangle', 0.15, 0.15), 100);
+            },
+            win() {
+                this.init();
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.2, 0.2), idx * 100);
+                });
+            },
+            lose() {
+                this.init();
+                const notes = [300, 260, 220, 180];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'sawtooth', 0.25, 0.2), idx * 120);
+                });
+            }
+        };
+        let soundMuted = false;
+    </script>
+
+    <!-- App Container -->
+    <div id="game-container" class="w-full max-w-4xl flex flex-col my-auto transition-all duration-300">
+
+        <!-- Top Navigation Bar -->
+        <header class="flex items-center justify-between mb-4 bg-slate-900/80 backdrop-blur border border-slate-800 p-4 rounded-2xl shadow-xl">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-xl font-bold">
+                    ⚔️
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-red-400">
+                        猜拳大冒險 RPG
+                    </h1>
+                    <p class="text-xs text-slate-400">Rock Paper Scissors Fantasy Quest</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button id="sound-toggle-btn" onclick="toggleSound()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center transition">
+                    <i class="fa-solid fa-volume-high mr-1.5 text-amber-400" id="sound-icon"></i>
+                    <span id="sound-text">音效 ON</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- ================= PHASE 1: CHARACTER CREATION SETUP ================= -->
+        <section id="setup-screen" class="bg-slate-900/90 border border-slate-800 backdrop-blur-md rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+            <div class="absolute -right-20 -top-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div class="text-center mb-8">
+                <span class="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold rounded-full uppercase tracking-wider">
+                    Chapter 1: 冒險者登入
+                </span>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-white mt-2">創建你的勇者稱號與裝備</h2>
+                <p class="text-slate-400 text-sm mt-1">選擇專屬稱號與神器，展開討伐魔王 AI 的征途！</p>
+            </div>
+
+            <div class="space-y-6 max-w-2xl mx-auto">
+                <!-- Name Input -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-300 mb-2 flex items-center">
+                        <i class="fa-solid fa-user-shield text-amber-400 mr-2"></i> 冒險者姓名
+                    </label>
+                    <input type="text" id="player-name-input" placeholder="輸入你的勇者名字 (例如：亞瑟)" 
+                        value="勇者亞瑟" 
+                        class="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 text-white rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition">
+                </div>
+
+                <!-- Equipment Selection Cards -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-300 mb-3 flex items-center">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-2"></i> 選擇攜帶的神器裝備
+                    </label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        
+                        <!-- Option 1: Gold Keyboard -->
+                        <div onclick="selectEquipment('keyboard')" id="equip-card-keyboard" 
+                            class="equip-card cursor-pointer border-2 border-amber-500/80 bg-amber-500/10 rounded-2xl p-4 transition-all duration-200 hover:scale-[1.02] relative overflow-hidden">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-3xl">⌨️</span>
+                                <span class="text-[10px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full">幸運被動</span>
+                            </div>
+                            <h3 class="font-bold text-white text-base">黃金鍵盤</h3>
+                            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                                <strong class="text-amber-400">觸發幸運：</strong>平手時有 <span class="text-amber-300 font-bold">20% 機率</span> 強制逆轉為你獲勝並造成傷害！
+                            </p>
+                        </div>
+
+                        <!-- Option 2: Magic Wand -->
+                        <div onclick="selectEquipment('wand')" id="equip-card-wand" 
+                            class="equip-card cursor-pointer border-2 border-slate-800 bg-slate-950/60 hover:border-slate-600 rounded-2xl p-4 transition-all duration-200 hover:scale-[1.02] relative overflow-hidden">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-3xl">🪄</span>
+                                <span class="text-[10px] font-bold px-2 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded-full">暴擊加成</span>
+                            </div>
+                            <h3 class="font-bold text-white text-base">魔法魔杖</h3>
+                            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                                <strong class="text-purple-400">魔法暴擊：</strong>每回合猜拳獲勝時，追加 <span class="text-purple-300 font-bold">+10 點</span> 額外爆炸傷害！
+                            </p>
+                        </div>
+
+                        <!-- Option 3: Holy Shield -->
+                        <div onclick="selectEquipment('shield')" id="equip-card-shield" 
+                            class="equip-card cursor-pointer border-2 border-slate-800 bg-slate-950/60 hover:border-slate-600 rounded-2xl p-4 transition-all duration-200 hover:scale-[1.02] relative overflow-hidden">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-3xl">🛡️</span>
+                                <span class="text-[10px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/40 rounded-full">減傷防禦</span>
+                            </div>
+                            <h3 class="font-bold text-white text-base">聖騎士盾</h3>
+                            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                                <strong class="text-blue-400">神聖壁壘：</strong>回合不幸戰敗時，自動抵擋 <span class="text-blue-300 font-bold">5 點</span> 傷害！
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Start Game Button -->
+                <button onclick="startAdventure()" class="w-full py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-lg rounded-2xl shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40 transition transform active:scale-95 flex items-center justify-center space-x-2 glow-btn">
+                    <span>踏上冒險戰場</span>
+                    <i class="fa-solid fa-dragon"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- ================= PHASE 2: BATTLE ARENA ================= -->
+        <section id="battle-screen" class="hidden flex-col gap-4">
+
+            <!-- Battle HUD (Fighters & HP Bars) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- Player HUD Card -->
+                <div id="player-hud" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-2xl shadow-md">
+                            🧙‍♂️
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <h3 id="display-player-name" class="font-black text-white text-base truncate">勇者名字</h3>
+                                <span id="display-player-equip" class="text-[11px] font-bold px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md">
+                                    黃金鍵盤
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs text-slate-400 mt-0.5">
+                                <span>HP 生命值</span>
+                                <span id="player-hp-text" class="font-bold text-white font-pixel text-[11px]">100 / 100</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- HP Bar Outer -->
+                    <div class="w-full bg-slate-950 rounded-full h-4 p-0.5 border border-slate-700/80 relative">
+                        <div id="player-hp-bar" class="bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-full transition-all duration-500 w-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                    </div>
+                </div>
+
+                <!-- Boss HUD Card -->
+                <div id="enemy-hud" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-600 to-purple-700 flex items-center justify-center text-2xl shadow-md">
+                            🤖
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-black text-rose-400 text-base">魔王 AI 終結者</h3>
+                                <span class="text-[11px] font-bold px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-md">
+                                    BOSS
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs text-slate-400 mt-0.5">
+                                <span>HP 生命值</span>
+                                <span id="enemy-hp-text" class="font-bold text-white font-pixel text-[11px]">100 / 100</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- HP Bar Outer -->
+                    <div class="w-full bg-slate-950 rounded-full h-4 p-0.5 border border-slate-700/80 relative">
+                        <div id="enemy-hp-bar" class="bg-gradient-to-r from-rose-500 to-rose-600 h-full rounded-full transition-all duration-500 w-full shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Central Arena Display -->
+            <div id="arena-box" class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-2xl relative min-h-[220px] flex flex-col items-center justify-center overflow-hidden">
+                
+                <!-- Background Decorative Grid -->
+                <div class="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:2rem_2rem] pointer-events-none"></div>
+
+                <!-- Round Header Banner -->
+                <div class="absolute top-3 px-4 py-1 bg-slate-800/80 border border-slate-700 rounded-full text-xs font-bold text-slate-300 flex items-center space-x-2">
+                    <span id="round-indicator" class="text-amber-400 font-pixel">ROUND 1</span>
+                </div>
+
+                <!-- Clash Hands Display -->
+                <div class="w-full flex items-center justify-around my-4 z-10">
+                    
+                    <!-- Player Choice Slot -->
+                    <div class="flex flex-col items-center relative">
+                        <div id="player-slot" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-950 border-2 border-amber-500/40 flex items-center justify-center text-5xl md:text-6xl shadow-inner transition">
+                            ❓
+                        </div>
+                        <span class="text-xs font-bold text-amber-400 mt-2">你出的拳</span>
+                    </div>
+
+                    <!-- VS Emblem -->
+                    <div class="flex flex-col items-center">
+                        <span class="font-pixel text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-400 to-red-500 italic drop-shadow-md">
+                            VS
+                        </span>
+                        <span id="battle-status-badge" class="mt-2 text-[11px] font-bold px-3 py-1 bg-slate-800 text-slate-300 rounded-full border border-slate-700">
+                            等待出拳...
+                        </span>
+                    </div>
+
+                    <!-- Enemy Choice Slot -->
+                    <div class="flex flex-col items-center relative">
+                        <div id="enemy-slot" class="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-950 border-2 border-rose-500/40 flex items-center justify-center text-5xl md:text-6xl shadow-inner transition">
+                            ❓
+                        </div>
+                        <span class="text-xs font-bold text-rose-400 mt-2">電腦出的拳</span>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Controls & Battle Feed Layout -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                
+                <!-- RPS Action Buttons (7 Cols) -->
+                <div class="md:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+                    <div class="text-xs font-bold text-slate-400 mb-3 flex items-center justify-between">
+                        <span><i class="fa-solid fa-gamepad text-amber-400 mr-1"></i> 請選擇你的出拳：</span>
+                        <span class="text-[10px] text-slate-500">也可按鍵盤 1, 2, 3</span>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        
+                        <!-- Scissors -->
+                        <button onclick="playRound('剪刀')" id="btn-scissors" class="group bg-slate-950 hover:bg-amber-500/10 border-2 border-slate-800 hover:border-amber-500/80 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center transition transform active:scale-90">
+                            <span class="text-3xl md:text-4xl group-hover:scale-110 transition duration-200">✌️</span>
+                            <span class="font-bold text-white text-sm mt-1">剪刀</span>
+                            <span class="text-[10px] text-slate-500 font-pixel mt-0.5">[ 1 ]</span>
+                        </button>
+
+                        <!-- Rock -->
+                        <button onclick="playRound('石頭')" id="btn-rock" class="group bg-slate-950 hover:bg-amber-500/10 border-2 border-slate-800 hover:border-amber-500/80 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center transition transform active:scale-90">
+                            <span class="text-3xl md:text-4xl group-hover:scale-110 transition duration-200">✊</span>
+                            <span class="font-bold text-white text-sm mt-1">石頭</span>
+                            <span class="text-[10px] text-slate-500 font-pixel mt-0.5">[ 2 ]</span>
+                        </button>
+
+                        <!-- Paper -->
+                        <button onclick="playRound('布')" id="btn-paper" class="group bg-slate-950 hover:bg-amber-500/10 border-2 border-slate-800 hover:border-amber-500/80 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center transition transform active:scale-90">
+                            <span class="text-3xl md:text-4xl group-hover:scale-110 transition duration-200">✋</span>
+                            <span class="font-bold text-white text-sm mt-1">布</span>
+                            <span class="text-[10px] text-slate-500 font-pixel mt-0.5">[ 3 ]</span>
+                        </button>
+
+                    </div>
+                </div>
+
+                <!-- Battle Log Container (5 Cols) -->
+                <div class="md:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col h-48 md:h-auto">
+                    <div class="text-xs font-bold text-slate-400 mb-2 flex items-center justify-between">
+                        <span><i class="fa-solid fa-scroll text-amber-400 mr-1"></i> 戰鬥紀錄 Log</span>
+                        <span id="turn-counter-badge" class="text-[10px] text-slate-500">回合: 0</span>
+                    </div>
+
+                    <div id="battle-log" class="flex-1 custom-scrollbar overflow-y-auto space-y-2 pr-1 text-xs">
+                        <!-- Initial Log Entry -->
+                        <div class="text-slate-500 italic p-2 bg-slate-950/40 rounded-lg">
+                            ⚔️ 戰鬥開始！請選擇你的出拳迎戰魔王...
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+    </div>
+
+    <!-- ================= PHASE 3: GAME OVER MODAL ================= -->
+    <div id="game-over-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl max-w-md w-full p-6 md:p-8 shadow-2xl text-center relative overflow-hidden transform transition-all scale-95 opacity-0" id="modal-card">
+            
+            <div id="modal-bg-glow" class="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div id="modal-icon-box" class="w-20 h-20 mx-auto rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-xl border">
+                🏆
+            </div>
+
+            <h2 id="modal-title" class="text-2xl md:text-3xl font-black text-white">
+                冒險勝利！
+            </h2>
+            <p id="modal-subtitle" class="text-sm text-slate-300 mt-2">
+                你成功用超凡拳藝擊敗了魔王 AI！
+            </p>
+
+            <!-- Stats Summary -->
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 my-6 text-left space-y-2 text-xs">
+                <div class="flex justify-between text-slate-400">
+                    <span>總作戰回合：</span>
+                    <span id="stat-rounds" class="font-bold text-white">5 回合</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>發動裝備被動：</span>
+                    <span id="stat-passives" class="font-bold text-amber-400">2 次</span>
+                </div>
+                <div class="flex justify-between text-slate-400">
+                    <span>剩餘血量：</span>
+                    <span id="stat-hp" class="font-bold text-emerald-400">45 / 100</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="resetGame(false)" class="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition">
+                    🔄 重新挑戰
+                </button>
+                <button onclick="resetGame(true)" class="py-3 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition">
+                    ⚔️ 更換裝備
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-8 text-center text-slate-600 text-xs py-2">
+        <p>RPG Rock-Paper-Scissors Game • Modern Web Edition</p>
+    </footer>
+
+    <!-- ================= GAME LOGIC JAVASCRIPT ================= -->
+    <script>
+        // Game State Variables
+        let gameState = {
+            playerName: "勇者亞瑟",
+            equipment: "keyboard", // 'keyboard', 'wand', 'shield'
+            playerHp: 100,
+            maxHp: 100,
+            enemyHp: 100,
+            roundNum: 1,
+            passivesTriggered: 0,
+            isAnimating: false,
+            gameOver: false
+        };
+
+        const equipmentInfo = {
+            keyboard: { name: "黃金鍵盤", icon: "⌨️", desc: "幸運被動" },
+            wand: { name: "魔法魔杖", icon: "🪄", desc: "暴擊加成" },
+            shield: { name: "聖騎士盾", icon: "🛡️", desc: "減傷防禦" }
+        };
+
+        const choiceIcons = {
+            "剪刀": "✌️",
+            "石頭": "✊",
+            "布": "✋"
+        };
+
+        const winRules = {
+            "剪刀": "布",
+            "石頭": "剪刀",
+            "布": "石頭"
+        };
+
+        // --- Audio Control ---
+        function toggleSound() {
+            soundMuted = !soundMuted;
+            const icon = document.getElementById('sound-icon');
+            const text = document.getElementById('sound-text');
+            if (soundMuted) {
+                icon.className = 'fa-solid fa-volume-xmark mr-1.5 text-slate-500';
+                text.innerText = '音效 OFF';
+            } else {
+                icon.className = 'fa-solid fa-volume-high mr-1.5 text-amber-400';
+                text.innerText = '音效 ON';
+                SoundFX.click();
+            }
+        }
+
+        // --- Phase 1: Equipment Selection ---
+        function selectEquipment(equipKey) {
+            SoundFX.click();
+            gameState.equipment = equipKey;
+            
+            // Update Card UI Highlight
+            document.querySelectorAll('.equip-card').forEach(card => {
+                card.classList.remove('border-amber-500/80', 'bg-amber-500/10');
+                card.classList.add('border-slate-800', 'bg-slate-950/60');
+            });
+
+            const selectedCard = document.getElementById(`equip-card-${equipKey}`);
+            selectedCard.classList.remove('border-slate-800', 'bg-slate-950/60');
+            selectedCard.classList.add('border-amber-500/80', 'bg-amber-500/10');
+        }
+
+        // --- Start Adventure Switch ---
+        function startAdventure() {
+            SoundFX.click();
+            const nameInput = document.getElementById('player-name-input').value.trim();
+            gameState.playerName = nameInput || "無名勇者";
+            
+            // Reset Stats
+            gameState.playerHp = 100;
+            gameState.enemyHp = 100;
+            gameState.roundNum = 1;
+            gameState.passivesTriggered = 0;
+            gameState.gameOver = false;
+
+            // Render HUD Labels
+            document.getElementById('display-player-name').innerText = gameState.playerName;
+            document.getElementById('display-player-equip').innerText = equipmentInfo[gameState.equipment].name;
+
+            updateHpUI();
+            
+            // Clear Battle Log
+            document.getElementById('battle-log').innerHTML = `
+                <div class="text-slate-500 italic p-2 bg-slate-950/40 rounded-lg">
+                    ⚔️ 冒險者【${gameState.playerName}】裝備【${equipmentInfo[gameState.equipment].name}】進入戰場！
+                </div>
+            `;
+
+            // Hide Setup, Show Arena
+            document.getElementById('setup-screen').classList.add('hidden');
+            const battleScreen = document.getElementById('battle-screen');
+            battleScreen.classList.remove('hidden');
+            battleScreen.classList.add('flex');
+        }
+
+        // --- Floating Damage FX ---
+        function spawnFloatingText(targetEl, text, colorClass) {
+            const rect = targetEl.getBoundingClientRect();
+            const floatEl = document.createElement('div');
+            floatEl.className = `damage-float text-xl md:text-2xl ${colorClass}`;
+            floatEl.innerText = text;
+
+            // Center above element
+            floatEl.style.left = `${rect.left + rect.width / 2 - 30}px`;
+            floatEl.style.top = `${rect.top + 10}px`;
+
+            document.body.appendChild(floatEl);
+
+            setTimeout(() => {
+                floatEl.remove();
+            }, 1200);
+        }
+
+        // --- Screen Shake FX ---
+        function triggerShake() {
+            const container = document.getElementById('game-container');
+            container.classList.add('shake-animation');
+            setTimeout(() => {
+                container.classList.remove('shake-animation');
+            }, 400);
+        }
+
+        // --- Main RPS Round Core ---
+        function playRound(playerChoice) {
+            if (gameState.isAnimating || gameState.gameOver) return;
+            gameState.isAnimating = true;
+
+            SoundFX.attack();
+
+            // Disable Action Buttons
+            setButtonsDisabled(true);
+
+            // Computer Random Choice
+            const choices = ["剪刀", "石頭", "布"];
+            const enemyChoice = choices[Math.floor(Math.random() * choices.length)];
+
+            // Arena Slots Setup
+            const playerSlot = document.getElementById('player-slot');
+            const enemySlot = document.getElementById('enemy-slot');
+            const badge = document.getElementById('battle-status-badge');
+
+            // Reset Animation Classes
+            playerSlot.className = "w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-950 border-2 border-amber-500/40 flex items-center justify-center text-5xl md:text-6xl shadow-inner animate-player-card";
+            enemySlot.className = "w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-slate-950 border-2 border-rose-500/40 flex items-center justify-center text-5xl md:text-6xl shadow-inner animate-enemy-card";
+
+            playerSlot.innerText = choiceIcons[playerChoice];
+            enemySlot.innerText = choiceIcons[enemyChoice];
+            badge.innerText = "對決中...";
+            badge.className = "mt-2 text-[11px] font-bold px-3 py-1 bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 animate-pulse";
+
+            // Process Battle Outcome after short animation delay
+            setTimeout(() => {
+                let outcome = ""; // 'win', 'lose', 'tie'
+                let damage = 25;
+                let logMsg = "";
+                let passiveText = "";
+
+                // Logic evaluation
+                if (playerChoice === enemyChoice) {
+                    // Check Gold Keyboard Passive (20% lucky win)
+                    if (gameState.equipment === 'keyboard' && Math.random() < 0.2) {
+                        outcome = "win";
+                        gameState.passivesTriggered++;
+                        passiveText = "✨ 觸發【黃金鍵盤】幸運打擊！平手逆轉為勝利！";
+                        damage = 25;
+                    } else {
+                        outcome = "tie";
+                    }
+                } else if (winRules[playerChoice] === enemyChoice) {
+                    outcome = "win";
+                    // Check Magic Wand Passive (+10 dmg)
+                    if (gameState.equipment === 'wand') {
+                        damage += 10;
+                        gameState.passivesTriggered++;
+                        passiveText = "⚡ 觸發【魔法魔杖】暴擊！傷害 +10！";
+                    }
+                } else {
+                    outcome = "lose";
+                    // Check Holy Shield Passive (-5 dmg)
+                    if (gameState.equipment === 'shield') {
+                        damage = Math.max(0, damage - 5);
+                        gameState.passivesTriggered++;
+                        passiveText = "🛡️ 觸發【聖騎士盾】防禦！抵擋 5 點傷害！";
+                    }
+                }
+
+                // Apply Damage & Sound Effects
+                if (outcome === 'win') {
+                    SoundFX.hit();
+                    gameState.enemyHp = Math.max(0, gameState.enemyHp - damage);
+                    triggerShake();
+                    spawnFloatingText(enemySlot, `-${damage}`, 'text-rose-500');
+                    if (passiveText) addLog(passiveText, "text-amber-400 font-bold");
+                    logMsg = `🎉 第 ${gameState.roundNum} 回合：你出【${playerChoice}】克制電腦【${enemyChoice}】，造成 ${damage} 點傷害！`;
+                    addLog(logMsg, "text-emerald-400");
+                    badge.innerText = "回合獲勝！";
+                    badge.className = "mt-2 text-[11px] font-bold px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30";
+
+                } else if (outcome === 'lose') {
+                    SoundFX.hit();
+                    gameState.playerHp = Math.max(0, gameState.playerHp - damage);
+                    triggerShake();
+                    spawnFloatingText(playerSlot, `-${damage}`, 'text-rose-500');
+                    if (passiveText) addLog(passiveText, "text-blue-400 font-bold");
+                    logMsg = `💥 第 ${gameState.roundNum} 回合：電腦【${enemyChoice}】擊敗你【${playerChoice}】，受到 ${damage} 點傷害！`;
+                    addLog(logMsg, "text-rose-400");
+                    badge.innerText = "回合戰敗！";
+                    badge.className = "mt-2 text-[11px] font-bold px-3 py-1 bg-rose-500/20 text-rose-300 rounded-full border border-rose-500/30";
+
+                } else {
+                    SoundFX.tie();
+                    logMsg = `🤝 第 ${gameState.roundNum} 回合：雙方皆出【${playerChoice}】，平手未造成傷害。`;
+                    addLog(logMsg, "text-slate-400");
+                    badge.innerText = "勢均力敵！";
+                    badge.className = "mt-2 text-[11px] font-bold px-3 py-1 bg-slate-800 text-slate-300 rounded-full border border-slate-700";
+                }
+
+                // Update Health UI
+                updateHpUI();
+
+                // Round Increment
+                gameState.roundNum++;
+                document.getElementById('round-indicator').innerText = `ROUND ${gameState.roundNum}`;
+                document.getElementById('turn-counter-badge').innerText = `回合: ${gameState.roundNum - 1}`;
+
+                // Check Game Over
+                if (gameState.playerHp <= 0 || gameState.enemyHp <= 0) {
+                    gameState.gameOver = true;
+                    setTimeout(() => showGameOverModal(gameState.playerHp > 0), 800);
+                } else {
+                    gameState.isAnimating = false;
+                    setButtonsDisabled(false);
+                }
+
+            }, 450);
+        }
+
+        // --- Disable / Enable Buttons ---
+        function setButtonsDisabled(disabled) {
+            ['btn-scissors', 'btn-rock', 'btn-paper'].forEach(id => {
+                const btn = document.getElementById(id);
+                btn.disabled = disabled;
+                if (disabled) {
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+        }
+
+        // --- Health Bar & UI Sync ---
+        function updateHpUI() {
+            const playerBar = document.getElementById('player-hp-bar');
+            const enemyBar = document.getElementById('enemy-hp-bar');
+
+            playerBar.style.width = `${(gameState.playerHp / gameState.maxHp) * 100}%`;
+            enemyBar.style.width = `${(gameState.enemyHp / gameState.maxHp) * 100}%`;
+
+            document.getElementById('player-hp-text').innerText = `${gameState.playerHp} / ${gameState.maxHp}`;
+            document.getElementById('enemy-hp-text').innerText = `${gameState.enemyHp} / ${gameState.maxHp}`;
+
+            // Color status gradient dynamically based on HP
+            if (gameState.playerHp <= 30) {
+                playerBar.className = "bg-gradient-to-r from-rose-600 to-red-500 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]";
+            } else if (gameState.playerHp <= 60) {
+                playerBar.className = "bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]";
+            } else {
+                playerBar.className = "bg-gradient-to-r from-emerald-500 to-emerald-400 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]";
+            }
+        }
+
+        // --- Log Feed Helper ---
+        function addLog(msg, colorClass = "text-slate-300") {
+            const logContainer = document.getElementById('battle-log');
+            const item = document.createElement('div');
+            item.className = `p-2 bg-slate-950/60 rounded-lg border border-slate-800/80 ${colorClass}`;
+            item.innerText = msg;
+            logContainer.appendChild(item);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // --- Game Over Modal ---
+        function showGameOverModal(isVictory) {
+            const modal = document.getElementById('game-over-modal');
+            const modalCard = document.getElementById('modal-card');
+            const iconBox = document.getElementById('modal-icon-box');
+            const title = document.getElementById('modal-title');
+            const subtitle = document.getElementById('modal-subtitle');
+            const glow = document.getElementById('modal-bg-glow');
+
+            document.getElementById('stat-rounds').innerText = `${gameState.roundNum - 1} 回合`;
+            document.getElementById('stat-passives').innerText = `${gameState.passivesTriggered} 次`;
+            document.getElementById('stat-hp').innerText = `${gameState.playerHp} / ${gameState.maxHp}`;
+
+            if (isVictory) {
+                SoundFX.win();
+                iconBox.innerText = "🏆";
+                iconBox.className = "w-20 h-20 mx-auto rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-xl border bg-amber-500/20 border-amber-500/50 text-amber-400";
+                title.innerText = "討伐成功！冒險勝利！";
+                title.className = "text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400";
+                subtitle.innerText = `恭喜勇者【${gameState.playerName}】順利擊敗魔王 AI 終結者！`;
+                glow.className = "absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full blur-3xl pointer-events-none bg-amber-500/30";
+            } else {
+                SoundFX.lose();
+                iconBox.innerText = "💀";
+                iconBox.className = "w-20 h-20 mx-auto rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-xl border bg-rose-500/20 border-rose-500/50 text-rose-400";
+                title.innerText = "冒險失敗... 勇者倒下了";
+                title.className = "text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-red-400";
+                subtitle.innerText = "魔王 AI 終結者過於強大，再整理裝備重新挑戰吧！";
+                glow.className = "absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 rounded-full blur-3xl pointer-events-none bg-rose-500/30";
+            }
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modalCard.classList.remove('scale-95', 'opacity-0');
+                modalCard.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        // --- Reset / Play Again ---
+        function resetGame(backToSetup = false) {
+            SoundFX.click();
+            const modal = document.getElementById('game-over-modal');
+            const modalCard = document.getElementById('modal-card');
+
+            modalCard.classList.remove('scale-100', 'opacity-100');
+            modalCard.classList.add('scale-95', 'opacity-0');
+
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                
+                if (backToSetup) {
+                    document.getElementById('battle-screen').classList.add('hidden');
+                    document.getElementById('setup-screen').classList.remove('hidden');
+                } else {
+                    // Quick restart battle
+                    gameState.playerHp = 100;
+                    gameState.enemyHp = 100;
+                    gameState.roundNum = 1;
+                    gameState.passivesTriggered = 0;
+                    gameState.gameOver = false;
+                    gameState.isAnimating = false;
+
+                    updateHpUI();
+                    setButtonsDisabled(false);
+
+                    document.getElementById('round-indicator').innerText = `ROUND 1`;
+                    document.getElementById('turn-counter-badge').innerText = `回合: 0`;
+                    document.getElementById('player-slot').innerText = "❓";
+                    document.getElementById('enemy-slot').innerText = "❓";
+                    document.getElementById('battle-status-badge').innerText = "等待出拳...";
+                    document.getElementById('battle-status-badge').className = "mt-2 text-[11px] font-bold px-3 py-1 bg-slate-800 text-slate-300 rounded-full border border-slate-700";
+
+                    document.getElementById('battle-log').innerHTML = `
+                        <div class="text-slate-500 italic p-2 bg-slate-950/40 rounded-lg">
+                            ⚔️ 重新戰鬥開始！請選擇你的出拳...
+                        </div>
+                    `;
+                }
+            }, 200);
+        }
+
+        // --- Keyboard Shortcuts (1, 2, 3) ---
+        window.addEventListener('keydown', (e) => {
+            if (document.getElementById('battle-screen').classList.contains('hidden')) return;
+            if (e.key === '1') playRound('剪刀');
+            if (e.key === '2') playRound('石頭');
+            if (e.key === '3') playRound('布');
+        });
+    </script>
+</body>
+</html>
